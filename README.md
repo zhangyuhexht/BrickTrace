@@ -4,7 +4,9 @@ Open-source hardware ray tracing for **Minecraft Java Edition 26.3**.
 
 **Static brick BVH + dynamic voxel payload** — the RT cores traverse a BLAS of 4³ brick AABBs, an intersection shader runs voxel DDA inside each brick, and block changes only rewrite voxel data. No acceleration structure is rebuilt when the world changes.
 
-> Status: **Pre-M1**. Design docs only, no renderer code yet. See [docs/roadmap.md](docs/roadmap.md).
+![BrickTrace 1080p ray traced terrain](docs/images/rt-1080p.png)
+
+> Status: **0.1.0 prototype**. The native Vulkan ray tracing renderer works and is benchmarked on an RTX 5060. The Fabric mod builds, loads in 26.3 and drives the renderer through JNI. In-game compositing (RT image on the game swapchain) is not implemented yet.
 
 ## Why
 
@@ -14,17 +16,16 @@ Existing Minecraft RT mods (Radiance, Radiante) trace triangle BLAS built from b
 
 ```
 Minecraft 26.3 JVM
-├─ Fabric Mixin (LevelRenderer / GameRenderer / Window)
+├─ Fabric Mixin (LevelRenderer / GameRenderer)
 ├─ WorldSnapshot (chunk / block / light / entity / camera)
 ├─ double-buffered snapshot + dirty-section queue
 └─ JNI
     └─ Native C++ renderer (Vulkan 1.3, KHR ray tracing)
         ├─ WorldDB      brick pool / material table
-        ├─ ASManager    static BLAS + per-frame TLAS
-        ├─ RT passes    shadow / reflection / GI
-        ├─ Denoise      NRD, DLSS RR
-        ├─ Upscale      DLSS SR / FSR / XeSS
-        └─ Composite / Present
+        ├─ ASManager    static BLAS per section + per-frame TLAS
+        ├─ RT passes    primary + shadow (reflection / GI planned)
+        ├─ Denoise      NRD, DLSS RR (planned)
+        └─ Composite / Present (planned)
 ```
 
 | Layer | Representation |
@@ -32,53 +33,79 @@ Minecraft 26.3 JVM
 | Section | 16³ blocks, 64 bricks |
 | Brick | 4³ voxels, `uint64` occupancy mask |
 | Voxel | `uint32`: material 16b · block light 4b · sky light 4b · flags 8b |
-| BLAS | 64 AABB primitives per section, built once |
-| TLAS | visible sections + entities, rebuilt per frame |
+| BLAS | one AABB primitive per non-empty brick, built once per section |
+| TLAS | visible sections, identity transform, rebuilt per frame |
 
-Voxel data per section is 16 KB; an empty brick has `occupancy == 0` and is skipped by DDA.
+## Results (RTX 5060 Laptop, driver 621.01)
 
-## Roadmap
+256×128×256 demo world, 947 non-empty sections, 50,217 bricks, 1920×1080:
 
-| Phase | Deliverable | Status |
-|---|---|---|
-| P0 | 256³ world export + CPU/GPU brick DDA reference images | planned |
-| P1 | Fabric mod, official `VkDevice`, RT triangle on screen | in progress |
-| P2 | Terrain shadows, 1080p / 8 chunks / ≥ 30 fps | planned |
-| P3 | GI + reflections + NRD | planned |
-| P4 | Dynamic blocks and entities, 0 BLAS rebuilds | planned |
-| P5 | DLSS / FSR / XeSS, HDR, UI compositing | planned |
-| P6 | Multi-GPU validation, docs, GPL-3.0 release | planned |
+| Metric | Value |
+|---|---|
+| GPU trace rays (primary + shadow) | **0.96 ms/frame** (≈1045 fps) |
+| Section upload + BLAS/TLAS build | 203 ms (one-off) |
+| BLAS + TLAS memory | 3.5 MiB |
+| Device | NVIDIA GeForce RTX 5060 Laptop GPU, 7.7 GiB |
 
-Target hardware: 1080p, 8–12 chunks, 8 GB VRAM (currently validated on an RTX 5060 Laptop).
+Measured with `bricktrace-rtbench` (timestamp queries around `vkCmdTraceRaysKHR`). Wall-clock per frame in the benchmark includes a blocking readback to PNG and is therefore not representative.
+
+## Install
+
+Requirements:
+
+- Minecraft **26.3** with **Fabric Loader 0.20.1+** and **Fabric API 0.165.2+26.3**
+- Windows x64, NVIDIA RTX (tested on RTX 5060), Vulkan 1.3 with ray tracing extensions
+- Java 25
+
+Drop `bricktrace-0.1.0.jar` into `.minecraft/mods`, start the game. The mod extracts its native library and SPIR-V shaders to `.minecraft/config/bricktrace/natives`, enumerates the Vulkan device on startup, and logs it:
+
+```
+BrickTrace native device info:
+NVIDIA GeForce RTX 5060 Laptop GPU api=1.4.357 AS=1 RT=1 RQ=1 vram=7.7GiB
+```
+
+After joining a world it renders one offscreen RT frame to `.minecraft/bricktrace_test_frame.png`.
 
 ## Build
 
-Native renderer (C++20, CMake + MSVC). Set `VULKAN_SDK` to a Vulkan SDK install, then:
+Native (C++20, CMake + MSVC + Vulkan SDK):
 
 ```powershell
 cmake -S native -B native/build -G "Visual Studio 18 2026" -A x64
 cmake --build native/build --config RelWithDebInfo
-.\native\build\RelWithDebInfo\bricktrace-vkprobe.exe
+
+# offline renderer: writes bricktrace_frame.png and prints timings
+.\native\build\RelWithDebInfo\bricktrace-rtbench.exe --shaders native\build\shaders --out native\build `
+    --frames 120 --width 1920 --height 1080 --cam 128 96 40 --pitch -0.22
 ```
 
-The probe prints every physical device, its API version and whether `VK_KHR_acceleration_structure`, `VK_KHR_ray_tracing_pipeline` and `VK_KHR_ray_query` are present. Shader sources in `shaders/` are compiled to SPIR-V by the same build via `glslang`.
-
-Environment check:
+Mod (Java 25, Gradle 9.8.2, Loom 1.19):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\check-env.ps1
+cd mod
+.\gradlew.bat build        # -> mod/build/libs/bricktrace-0.1.0.jar
+.\gradlew.bat runClient    # dev client, no launcher account needed
 ```
 
-The Fabric mod (`mod/`) is not scaffolded yet.
+The jar build copies `native/build/RelWithDebInfo/bricktrace_jni.dll` and the compiled shaders into the jar, so build the native side first.
+
+## Repository layout
+
+```
+mod/        Fabric mod (Java 25, Loom)
+native/     C++20 Vulkan renderer, JNI bridge, tools
+shaders/    GLSL ray tracing shaders, compiled by CMake via glslang
+docs/       architecture, roadmap, environment, prior art, M1 report
+scripts/    environment check
+```
 
 ## Docs
 
-- [HANDOFF.md](HANDOFF.md) — project handoff and scope
-- [docs/architecture.md](docs/architecture.md) — technical design (single source of truth)
+- [docs/architecture.md](docs/architecture.md) — technical design
 - [docs/roadmap.md](docs/roadmap.md) — phases and the 14-day M1 plan
-- [docs/environment.md](docs/environment.md) — Windows toolchain setup and verification
+- [docs/environment.md](docs/environment.md) — Windows toolchain setup
 - [docs/prior-art.md](docs/prior-art.md) — prior art and novelty claim
-- [docs/report-01-template.md](docs/report-01-template.md) — milestone report template
+- [docs/report-01.md](docs/report-01.md) — M1 results
 
 ## License
 

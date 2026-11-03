@@ -1,0 +1,93 @@
+#version 460
+#extension GL_EXT_ray_tracing : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
+struct Section {
+    ivec4 origin;  // xyz
+    uvec4 base;    // x = brick map base, y = occupancy base, z = voxel base
+};
+
+layout(std430, binding = 1) readonly buffer Sections { Section sections[]; };
+layout(std430, binding = 2) readonly buffer BrickMap { uint brickMap[]; };
+layout(std430, binding = 3) readonly buffer Occupancy { uint64_t occupancy[]; };
+layout(std430, binding = 4) readonly buffer Voxels { uint voxels[]; };
+
+hitAttributeEXT uvec2 hitInfo;  // x = voxel, y = face normal (0..5)
+
+const int kS = 4;
+
+int voxelIndex(ivec3 cell) {
+    return (cell.y * kS + cell.z) * kS + cell.x;
+}
+
+int occupancyBit(ivec3 cell) {
+    return (cell.y * kS + cell.z) * kS + cell.x;
+}
+
+void main() {
+    const Section section = sections[gl_InstanceCustomIndexEXT];
+    const uint primIndex = uint(gl_PrimitiveID);
+    const uint brick = brickMap[section.base.x + primIndex];
+    const ivec3 brickOrigin = section.origin.xyz + ivec3(brick % 4u, (brick / 4u) % 4u, brick / 16u) * kS;
+    const uint64_t occ = occupancy[section.base.y + primIndex];
+    if (occ == 0ul) {
+        return;
+    }
+
+    const vec3 origin = gl_ObjectRayOriginEXT - vec3(brickOrigin);
+    const vec3 dir = gl_ObjectRayDirectionEXT;
+    const ivec3 stepDir = ivec3(sign(dir));
+    const vec3 inv = 1.0 / dir;
+    const vec3 tDelta = abs(inv);
+
+    // Face the ray enters the brick through, and the actual entry point. The ray origin can be
+    // far outside the brick, so the DDA must start at the clip point, not at the origin.
+    const vec3 slabMin = min((vec3(0.0) - origin) * inv, (vec3(float(kS)) - origin) * inv);
+    int face;
+    if (slabMin.x >= slabMin.y && slabMin.x >= slabMin.z) {
+        face = dir.x > 0.0 ? 4 : 5;
+    } else if (slabMin.y >= slabMin.z) {
+        face = dir.y > 0.0 ? 2 : 3;
+    } else {
+        face = dir.z > 0.0 ? 0 : 1;
+    }
+    const float brickEnter = max(max(slabMin.x, slabMin.y), slabMin.z);
+    const float tStart = max(brickEnter, 0.0);
+    const vec3 entry = origin + dir * tStart;
+    ivec3 cell = clamp(ivec3(floor(entry)), ivec3(0), ivec3(kS - 1));
+    vec3 tMax = (vec3(cell + max(stepDir, ivec3(0))) - origin) * inv;
+    float tEnter = max(gl_RayTminEXT, tStart);
+
+    for (int i = 0; i < 16; ++i) {
+        if (any(lessThan(cell, ivec3(0))) || any(greaterThanEqual(cell, ivec3(kS)))) {
+            return;
+        }
+
+        if (((occ >> occupancyBit(cell)) & 1ul) != 0ul) {
+            const uint voxel =
+                voxels[section.base.z + primIndex * 64u + uint(voxelIndex(cell))];
+            if ((voxel & 0xffffu) != 0u && tEnter < gl_RayTmaxEXT) {
+                hitInfo = uvec2(voxel, uint(face));
+                reportIntersectionEXT(max(tEnter, gl_RayTminEXT), 0);
+                return;
+            }
+        }
+
+        if (tMax.x < tMax.y && tMax.x < tMax.z) {
+            cell.x += stepDir.x;
+            tEnter = tMax.x;
+            tMax.x += tDelta.x;
+            face = stepDir.x > 0 ? 4 : 5;
+        } else if (tMax.y < tMax.z) {
+            cell.y += stepDir.y;
+            tEnter = tMax.y;
+            tMax.y += tDelta.y;
+            face = stepDir.y > 0 ? 2 : 3;
+        } else {
+            cell.z += stepDir.z;
+            tEnter = tMax.z;
+            tMax.z += tDelta.z;
+            face = stepDir.z > 0 ? 0 : 1;
+        }
+    }
+}

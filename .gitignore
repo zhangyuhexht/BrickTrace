@@ -13,10 +13,12 @@ native/build/
 
 # artifacts
 *.jar
+!mod/gradle/wrapper/gradle-wrapper.jar
 mods/
 captures/
 *.rdc
 *.cap
+mod/run/
 
 # logs
 *.log

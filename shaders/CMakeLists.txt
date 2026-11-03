@@ -15,6 +15,12 @@ set(BT_SHADERS
     rt/hello.rgen
     rt/hello.rmiss
     rt/hello.rchit
+    rt/voxel.rgen
+    rt/voxel.rmiss
+    rt/voxel.rchit
+    rt/voxel.rint
+    rt/shadow.rmiss
+    rt/shadow.rahit
 )
 
 set(BT_SPIRV_OUTPUTS "")
