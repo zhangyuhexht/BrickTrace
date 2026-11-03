@@ -6,7 +6,7 @@ Open-source hardware ray tracing for **Minecraft Java Edition 26.3**.
 
 ![BrickTrace 1080p ray traced terrain](docs/images/rt-1080p.png)
 
-> Status: **0.1.0 prototype**. The native Vulkan ray tracing renderer works and is benchmarked on an RTX 5060. The Fabric mod builds, loads in 26.3 and drives the renderer through JNI. In-game compositing (RT image on the game swapchain) is not implemented yet.
+> Status: **0.1.0 prototype**. The native Vulkan ray tracing renderer works and is benchmarked on an RTX 5060. The Fabric mod builds, loads in 26.3 under Fabric, drives the renderer through JNI and is verified end-to-end with a Fabric client gametest (mixin frame hook + in-game offscreen RT frame). In-game compositing (RT image on the game swapchain) and access to Minecraft's own `VkDevice` are the next steps.
 
 ## Why
 

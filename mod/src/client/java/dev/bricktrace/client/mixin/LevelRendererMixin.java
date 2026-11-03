@@ -1,10 +1,14 @@
 package dev.bricktrace.client.mixin;
 
+import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import dev.bricktrace.BrickTraceMod;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -15,7 +19,10 @@ public abstract class LevelRendererMixin {
     private static long bricktrace$lastLog;
 
     @Inject(method = "render", at = @At("HEAD"))
-    private void bricktrace$captureFrame(CallbackInfo ci) {
+    private void bricktrace$captureFrame(GraphicsResourceAllocator allocator, boolean tick,
+                                         CameraRenderState cameraState, GpuBufferSlice fog,
+                                         Vector4f fogColor, boolean renderClouds, boolean renderWeather,
+                                         CallbackInfo ci) {
         final long now = System.currentTimeMillis();
         if (now - bricktrace$lastLog < 1000L) {
             return;

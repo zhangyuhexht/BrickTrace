@@ -19,6 +19,16 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
+fabricApi {
+    configureTests {
+        createSourceSet = true
+        modId = "bricktrace-gametest"
+        enableClientGameTests = true
+        eula = true
+        clearRunDirectory = false
+    }
+}
+
 processResources {
     def version = project.version
     inputs.property "version", version
@@ -38,13 +48,14 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 25
+    // Mixin only accepts class files up to Java 21 (version 65) even though the game runs on 25.
+    it.options.release = 21
 }
 
 java {
     withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
 
 jar {

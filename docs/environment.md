@@ -112,24 +112,26 @@ instances/
 
 ## 7. 构建验证
 
-```powershell
-git clone <repo>
-cd BrickTrace
-.\gradlew.bat build
-```
-
 native：
 
 ```powershell
-cmake -S native -B native/build -G "Visual Studio 17 2022" -A x64
+$env:VULKAN_SDK = "E:\tools\vulkan"
+cmake -S native -B native/build -G "Visual Studio 18 2026" -A x64
 cmake --build native/build --config RelWithDebInfo
 ```
 
-shader：
+shader 编译随 CMake 自动完成（glslang 来自 `VULKAN_SDK/bin`）。
+
+mod（JDK 25，Gradle 9.8.2）：
 
 ```powershell
-glslangValidator --version
+cd mod
+.\gradlew.bat build
 ```
+
+> 26.x 的 Minecraft 已不再混淆，Loom 1.19 因此不需要 mappings 依赖。
+> 本机 `VULKAN_SDK` 是由 Vulkan-Headers + glslang + 从系统 `vulkan-1.dll` 生成的导入库拼装的，
+> 不是 LunarG 官方安装包；官方 SDK 到位后可整体替换。
 
 ---
 

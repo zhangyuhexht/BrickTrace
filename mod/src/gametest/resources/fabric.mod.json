@@ -1,0 +1,17 @@
+{
+	"schemaVersion": 1,
+	"id": "bricktrace-gametest",
+	"version": "0.1.0",
+	"name": "BrickTrace client gametest",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"dev.bricktrace.gametest.BrickTraceClientGameTest"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"bricktrace": "*"
+	}
+}

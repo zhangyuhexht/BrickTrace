@@ -8,9 +8,10 @@
 | 机器 / GPU | RTX 5060 Laptop GPU（8151 MiB），驱动 621.01 |
 | 驱动 / Vulkan | Vulkan 实例 1.4.357，设备 API 1.4.357 |
 | Commit | 见仓库 `main` 分支最新提交 |
-| 官方 VkDevice | ❌ 未实现（见第 2 节） |
-| RT 三角形 | ✅ 超出目标：直接做到 RT 体素 brick DDA + 阴影 |
+| 官方 VkDevice | ❌ 未接入（见第 2 节） |
+| RT 三角形 | ✅ 超出目标：RT 体素 brick DDA + 阴影，离屏与游戏内自检均出图 |
 | Brick DDA | ✅ GPU 出图，几何正确 |
+| 游戏内加载 | ✅ Fabric 26.3 + Mixin + JNI 全链路通过 |
 | Go/No-Go | 有条件 Go（见第 7 节） |
 
 一句话结论：**静态 brick BVH + 动态体素 payload 这条路在 5060 上成立**——1080p 全屏主射线 + 阴影射线 0.96 ms，947 个 section、50,217 个 brick，BLAS/TLAS 仅 3.5 MiB；剩下的关键风险是接入游戏官方 `VkDevice` 与上屏。
@@ -71,7 +72,6 @@ CMake 4.4.2 / MSVC 14.51 (VS 2026 Insiders) / Git 2.54
 ---
 
 ## 4. 离线 Brick DDA
-
 - 世界：256×128×256（16×8×16 = 2048 sections），程序化地形，947 个非空 section，50,217 个 brick
 - 生成耗时：14 ms；上传 + BLAS/TLAS 构建：203 ms
 - 正确性检查：
@@ -79,6 +79,24 @@ CMake 4.4.2 / MSVC 14.51 (VS 2026 Insiders) / Git 2.54
   - 俯视法线图几乎全为 +Y，只有台阶边缘出现侧向法线 → 无漏面、无法线错误
   - 透视渲染中地形连续、阴影方向与太阳一致
 - 图像：`docs/images/rt-1080p.png`
+
+---
+
+### 4.5 游戏内验证
+
+Fabric 客户端 GameTest 自动建世界（26.3 / loader 0.20.1 / Fabric API 0.165.2），完整日志：
+
+```
+[bricktrace] BrickTrace 0.1.0 initializing
+[bricktrace] BrickTrace native device info:
+NVIDIA GeForce RTX 5060 Laptop GPU api=1.4.357 AS=1 RT=1 RQ=1 vram=7.7GiB
+[bricktrace] BrickTrace frame: camera=(0.50, -58.38, 0.50) rot=(0.0, 0.0) fov=70.0 visibleSections=53
+[bricktrace] BrickTrace offscreen RT test frame -> ...\bricktrace_test_frame.png (ok)
+```
+
+- Mixin 成功注入 `LevelRenderer.render`，每帧路径上每秒输出相机、FOV、可见 section 数
+- JNI 在游戏进程内创建独立 Vulkan device，渲染 1280×720 一帧并落盘（图见 `docs/images/rt-1080p.png` 同款场景）
+- 注意：dev 客户端默认图形后端是 **OpenGL**。26.3 自带 Vulkan 后端（`com.mojang.renderpearl.backend.vulkan.VulkanInstance`，选项 `preferredGraphicsBackend` 支持 `VULKAN`），切换后端与官方 `VkDevice` 接入留到下一步
 
 ---
 
