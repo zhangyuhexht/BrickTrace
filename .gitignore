@@ -1,0 +1,31 @@
+# build
+build/
+out/
+native/build/
+.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.sln
+*.vcxproj
+*.vcxproj.*
+
+# artifacts
+*.jar
+mods/
+captures/
+*.rdc
+*.cap
+
+# logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# local-only (constraint: closed-source baseline jar and agent handoff notes stay out of the repo)
+BrickTrace-handoff.zip
+AGENT_PROMPT.md
