@@ -53,11 +53,23 @@ Target hardware: 1080p, 8–12 chunks, 8 GB VRAM (currently validated on an RTX 
 
 ## Build
 
-Nothing to build yet. The toolchain is documented in [docs/environment.md](docs/environment.md); run the environment check with:
+Native renderer (C++20, CMake + MSVC). Set `VULKAN_SDK` to a Vulkan SDK install, then:
+
+```powershell
+cmake -S native -B native/build -G "Visual Studio 18 2026" -A x64
+cmake --build native/build --config RelWithDebInfo
+.\native\build\RelWithDebInfo\bricktrace-vkprobe.exe
+```
+
+The probe prints every physical device, its API version and whether `VK_KHR_acceleration_structure`, `VK_KHR_ray_tracing_pipeline` and `VK_KHR_ray_query` are present. Shader sources in `shaders/` are compiled to SPIR-V by the same build via `glslang`.
+
+Environment check:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\check-env.ps1
 ```
+
+The Fabric mod (`mod/`) is not scaffolded yet.
 
 ## Docs
 
