@@ -12,7 +12,7 @@
 - **做什么**：Fabric 注入 + 原生 C++ Vulkan RT 渲染器，在 26.3 官方 Vulkan 后端上跑硬件光追。
 - **核心新颖点**：**静态 brick BVH + 动态体素 payload**。RT 核心遍历 4³ brick 的 AABB BVH，intersection shader 在 brick 内做 DDA；方块变化只更新体素 buffer，不重建 BLAS。
 - **不做什么**：不重写客户端、不用 Unity/Unreal/Godot、不追求 Fabric 渲染 mod 兼容、不做商业产品。
-- **许可**：代码计划 MIT / Apache-2.0。Lumen 是 ARR 闭源，只能黑盒对照；Radiance/Radiante 是 GPL，不能抄代码。
+- **许可**：代码采用 GPL-3.0。Lumen 是 ARR 闭源，只能黑盒对照；Radiance/Radiante 也是 GPL-3.0，但不抄代码，保持 clean-room。
 - **第一个里程碑（14 天）**：M1「Hello RT + Brick DDA」——Fabric mod 能加载、拿到 Vulkan 设备、RT 三角形上屏、离线 brick DDA 出图、在 5060 上跑出第一组基准。
 - **Go/No-Go**：拿不到官方 `VkDevice`、RT 管线跑不通、brick DDA 性能低于目标 70%，就先停下来解决，不进 P2。
 
@@ -63,7 +63,7 @@
 
 | 项目 | 状态 | 许可 | 关系 |
 |---|---|---|---|
-| **Radiance** | 1.20.1 / 1.21.1 / 1.21.4，26.x 移植中 | GPL-3.0 | 上游参考；不能抄进 MIT 项目 |
+| **Radiance** | 1.20.1 / 1.21.1 / 1.21.4，26.x 移植中 | GPL-3.0 | 上游参考；独立实现，不抄代码 |
 | **Radiante** | 26.3 / 26.2 / 26.4 snapshot，Fabric/NeoForge/Forge | GPL-3.0（Radiance fork） | 直接竞品；不能抄 |
 | **Lumen (AetherRT)** | 26.3 Fabric，0.1.3-alpha | **ARR 闭源** | 黑盒基线；不能抄、不能反编译 |
 | **RTX Remix 1.6** | 1.21.1 beta | NVIDIA 专有 | 不是 26.3 方案 |

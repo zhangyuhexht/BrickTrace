@@ -16,7 +16,7 @@
 | **P3 GI/反射** | 4 周 | G-buffer + RT reflection + 1~2 bounce + NRD | 无闪烁；水/玻璃正确 | 5060 |
 | **P4 动态/实体** | 3 周 | 脏队列 + 实体 BLAS + 透明 | 方块更新 0 次 BLAS 重建 | 5060 |
 | **P5 上采样/合成** | 3 周 | DLSS/FSR/XeSS + HDR + UI | 1080p 60（DLSS Performance） | 5060 |
-| **P6 优化/发布** | 4 周 | 多 GPU 测试、文档、demo、MIT 发布 | 稳定、可复现 | 5060 + 其他 |
+| **P6 优化/发布** | 4 周 | 多 GPU 测试、文档、demo、GPL-3.0 发布 | 稳定、可复现 | 5060 + 其他 |
 
 ---
 
@@ -116,7 +116,7 @@
 
 - 3 张不同 GPU 测试通过。
 - 文档 + demo + 可复现 benchmark。
-- MIT/Apache 发布。
+- GPL-3.0 发布。
 
 ---
 

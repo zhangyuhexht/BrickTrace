@@ -13,7 +13,7 @@
 - 硬件 RT：阴影、反射、1~2 bounce GI。
 - 1080p / 8~12 区块 / DLSS Performance 或 Quality 下可玩。
 - 方块变化不重建 BLAS。
-- 开源（MIT / Apache-2.0）。
+- 开源（GPL-3.0）。
 
 ### 1.2 非目标
 

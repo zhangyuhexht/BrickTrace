@@ -47,7 +47,7 @@ Voxel data per section is 16 KB; an empty brick has `occupancy == 0` and is skip
 | P3 | GI + reflections + NRD | planned |
 | P4 | Dynamic blocks and entities, 0 BLAS rebuilds | planned |
 | P5 | DLSS / FSR / XeSS, HDR, UI compositing | planned |
-| P6 | Multi-GPU validation, docs, MIT release | planned |
+| P6 | Multi-GPU validation, docs, GPL-3.0 release | planned |
 
 Target hardware: 1080p, 8–12 chunks, 8 GB VRAM (currently validated on an RTX 5060 Laptop).
 
@@ -70,6 +70,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\check-env.ps1
 
 ## License
 
-[MIT](LICENSE). Third-party components keep their own licenses.
+[GPL-3.0](LICENSE). Third-party components keep their own licenses.
 
-This project is clean-room: it is not derived from any closed-source or GPL Minecraft ray tracing mod, and no such code or assets are included.
+This project is clean-room: it is not derived from any closed-source Minecraft ray tracing mod, and no such code or assets are included.
