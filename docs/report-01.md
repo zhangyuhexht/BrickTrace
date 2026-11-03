@@ -96,7 +96,25 @@ NVIDIA GeForce RTX 5060 Laptop GPU api=1.4.357 AS=1 RT=1 RQ=1 vram=7.7GiB
 
 - Mixin 成功注入 `LevelRenderer.render`，每帧路径上每秒输出相机、FOV、可见 section 数
 - JNI 在游戏进程内创建独立 Vulkan device，渲染 1280×720 一帧并落盘（图见 `docs/images/rt-1080p.png` 同款场景）
-- 注意：dev 客户端默认图形后端是 **OpenGL**。26.3 自带 Vulkan 后端（`com.mojang.renderpearl.backend.vulkan.VulkanInstance`，选项 `preferredGraphicsBackend` 支持 `VULKAN`），切换后端与官方 `VkDevice` 接入留到下一步
+- 注意：dev 客户端默认图形后端是 **OpenGL**。26.3 自带 Vulkan 后端（`com.mojang.renderpearl.backend.vulkan`，选项 `preferredGraphicsBackend`），已验证设为 `"vulkan"` 后游戏正常启动：
+
+```
+Using graphics backend Vulkan, using drivers: 1.4.357 NVIDIA 621.01
+Using graphics device: NVIDIA GeForce RTX 5060 Laptop GPU (NVIDIA)
+```
+
+但 Minecraft 创建 device 时启用的扩展只有 swapchain / dynamic rendering / push descriptor 等，**不含任何 RT 扩展**。因此“复用官方 device”不能直接成立，需要在 device 创建路径注入 RT 扩展与 feature 链，或退回独立 device + external memory —— 这是下一阶段的第一个决策点。
+
+官方 device 的访问入口已经确认存在：
+
+```
+com.mojang.renderpearl.backend.vulkan.VulkanDevice
+  VkDevice vkDevice()
+  VulkanQueue graphicsQueue()
+  long vma()
+com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice
+  VkPhysicalDevice vkPhysicalDevice()
+```
 
 ---
 
