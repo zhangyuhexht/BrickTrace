@@ -58,10 +58,13 @@ void main() {
         const vec3 origin = params.camPos.xyz + dir * primary.t;
         shadowLit = 1.0;
         if (params.flags.x > 0.5) {
+            // Start at the centre of the air voxel adjacent to the hit face: half a voxel along
+            // the face normal. This cannot be inside solid geometry, so grazing views do not
+            // produce self-shadow wedges.
             traceRayEXT(topLevelAS,
                         gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
                         0xff, 0, 1, 1,
-                        origin + primary.normal * 0.15, 0.02,
+                        origin + primary.normal * 0.5, 0.001,
                         normalize(params.sunDir.xyz), 4000.0, 1);
         }
 

@@ -27,6 +27,7 @@ public final class BrickTraceRtView implements AutoCloseable {
     private boolean failed;
     private boolean loggedCenterPixel;
     private boolean worldUploaded;
+    private boolean hasWorld;
     private net.minecraft.client.multiplayer.ClientLevel lastLevel;
     private int lastCenterChunkX = Integer.MIN_VALUE;
     private int lastCenterChunkZ = Integer.MIN_VALUE;
@@ -81,11 +82,20 @@ public final class BrickTraceRtView implements AutoCloseable {
         if (snapshot.sectionCount() > 0
                 && NativeBridge.nativeUploadWorld(handle, snapshot.origins(), snapshot.voxels())) {
             worldUploaded = true;
+            hasWorld = true;
             BrickTraceMod.LOGGER.info("BrickTrace: uploaded {} real sections from the client world",
                     snapshot.sectionCount());
             return;
         }
+        if (hasWorld) {
+            // Keep the previous snapshot: at unloaded positions the capture is empty and
+            // replacing it with demo geometry would be worse than stale data.
+            worldUploaded = true;
+            BrickTraceMod.LOGGER.warn("BrickTrace: capture empty (chunks not loaded), keeping world");
+            return;
+        }
         worldUploaded = NativeBridge.nativeUploadDemoWorld(handle);
+        hasWorld = worldUploaded;
         BrickTraceMod.LOGGER.warn("BrickTrace: no real sections captured, using demo world ({})",
                 worldUploaded);
     }
