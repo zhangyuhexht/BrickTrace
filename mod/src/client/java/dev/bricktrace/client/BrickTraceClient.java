@@ -27,6 +27,7 @@ public final class BrickTraceClient implements ClientModInitializer {
     private static boolean screenshotDone;
     private static boolean afterScreenshotDone;
     private static boolean editDone;
+    private static BlockPos pillarPos;
 
     @Override
     public void onInitializeClient() {
@@ -66,10 +67,35 @@ public final class BrickTraceClient implements ClientModInitializer {
                 // Place a small stone pillar in front of the player to exercise the update path.
                 final BlockPos target = BlockPos.containing(client.player.getEyePosition()
                         .add(client.player.getLookAngle().scale(8.0)));
+                pillarPos = target;
                 for (int y = 0; y < 3; ++y) {
                     client.level.setBlockAndUpdate(target.above(y), Blocks.STONE.defaultBlockState());
                 }
                 BrickTraceMod.LOGGER.info("BrickTrace: placed test blocks at {}", target);
+            }
+            if (dev && worldTicks == 260 && pillarPos != null) {
+                for (int y = 0; y < 3; ++y) {
+                    client.level.setBlockAndUpdate(pillarPos.above(y), Blocks.AIR.defaultBlockState());
+                }
+                BrickTraceMod.LOGGER.info("BrickTrace: removed test blocks at {}", pillarPos);
+            }
+            if (dev && worldTicks == 320 && pillarPos != null) {
+                Screenshot.grab(client, true);
+                BrickTraceMod.LOGGER.info("BrickTrace: after-removal screenshot at tick {}", worldTicks);
+            }
+            if (dev && worldTicks == 460) {
+                client.player.connection.sendCommand("tp @s 120 80 120");
+                BrickTraceMod.LOGGER.info("BrickTrace: teleport command sent for re-capture test");
+            }
+            if (dev && worldTicks == 600) {
+                Screenshot.grab(client, true);
+                BrickTraceMod.LOGGER.info("BrickTrace: post-teleport screenshot at tick {}", worldTicks);
+            }
+            if (dev && worldTicks >= 340 && worldTicks <= 420 && worldTicks % 4 == 0) {
+                final int index = (worldTicks - 340) / 4;
+                final BlockPos base = client.player.blockPosition()
+                        .offset((index % 5) - 2, 1 + index / 5, 5);
+                client.level.setBlockAndUpdate(base, Blocks.STONE.defaultBlockState());
             }
             if (dev && !screenshotDone && worldTicks == 140) {
                 screenshotDone = true;

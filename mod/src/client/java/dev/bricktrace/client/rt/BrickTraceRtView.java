@@ -26,6 +26,11 @@ public final class BrickTraceRtView implements AutoCloseable {
     private boolean failed;
     private boolean loggedCenterPixel;
     private boolean worldUploaded;
+    private net.minecraft.client.multiplayer.ClientLevel lastLevel;
+    private int lastCenterChunkX = Integer.MIN_VALUE;
+    private int lastCenterChunkZ = Integer.MIN_VALUE;
+    private long frameCount;
+    private double frameMsSum;
 
     public boolean initialize() {
         if (ready || failed) {
@@ -54,6 +59,13 @@ public final class BrickTraceRtView implements AutoCloseable {
     /** Captures the loaded chunks around the player once and uploads them to the renderer. */
     public void ensureWorld(net.minecraft.client.multiplayer.ClientLevel level, int chunkX,
                             int chunkZ) {
+        if (level != lastLevel || Math.abs(chunkX - lastCenterChunkX) > 4
+                || Math.abs(chunkZ - lastCenterChunkZ) > 4) {
+            lastLevel = level;
+            lastCenterChunkX = chunkX;
+            lastCenterChunkZ = chunkZ;
+            worldUploaded = false;
+        }
         if (!ready || worldUploaded) {
             return;
         }
@@ -80,6 +92,7 @@ public final class BrickTraceRtView implements AutoCloseable {
         if (!ready) {
             return;
         }
+        final long startNanos = System.nanoTime();
         if (!NativeBridge.nativeRenderFrame(handle, pose.x, pose.y, pose.z, pose.yawRadians,
                 pose.pitchRadians, pose.fovDegrees)) {
             return;
@@ -89,6 +102,14 @@ public final class BrickTraceRtView implements AutoCloseable {
         }
         MemoryUtil.memCopy(MemoryUtil.memAddress(pixels), image.getPointer(), (long) WIDTH * HEIGHT * 4);
         texture.upload();
+
+        frameCount++;
+        frameMsSum += (System.nanoTime() - startNanos) / 1_000_000.0;
+        if (frameCount % 120 == 0) {
+            BrickTraceMod.LOGGER.info("BrickTrace: {} RT frames, avg {} ms (render + readback + upload)",
+                    frameCount, String.format("%.2f", frameMsSum / 120.0));
+            frameMsSum = 0.0;
+        }
 
         if (!loggedCenterPixel) {
             loggedCenterPixel = true;

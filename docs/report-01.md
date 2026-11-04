@@ -175,7 +175,15 @@ BrickTrace: RT center pixel rgba=(52, 52, 50, 255)
 |---|---|
 | ![before](../docs/images/rt-edit-before.png) | ![after](../docs/images/rt-edit-after.png) |
 
-限制：脏集合只处理已上传的 section（半径 6 区块内）；跨区块移动不会重新捕获。
+限制：脏集合只处理已上传的 section；玩家移动超过 4 个区块（或切换世界）时整块重新捕获并重建 AS，会有约 1 秒卡顿。
+
+实测开销（960×540，游戏内每帧渲染 + 回读 + 纹理上传）：
+
+```
+BrickTrace: 3720 RT frames, avg 7.99 ms (render + readback + upload)
+```
+
+其中 GPU 光线追踪只占约 0.4 ms，其余是 `vkCmdCopyImageToBuffer` + 等待 + 上传纹理。去掉 CPU 回读（直接共享图像）是下一步最大的性能项。
 
 ---
 
