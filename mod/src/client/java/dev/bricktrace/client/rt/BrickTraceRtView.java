@@ -71,6 +71,10 @@ public final class BrickTraceRtView implements AutoCloseable {
                 worldUploaded);
     }
 
+    public boolean updateSection(int originX, int originY, int originZ, int[] voxels) {
+        return ready && NativeBridge.nativeUpdateSection(handle, originX, originY, originZ, voxels);
+    }
+
     /** Renders one ray traced frame. Called once per client frame while a world is loaded. */
     public void render(CameraPose pose) {
         if (!ready) {

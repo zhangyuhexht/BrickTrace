@@ -42,6 +42,7 @@ public:
     const std::string& deviceName() const;
 
     bool uploadWorld(const WorldData& world);
+    bool updateSection(const int32_t origin[3], const uint32_t* voxels);
     bool renderFrame(const Camera& camera);
     bool savePng(const std::string& path) const;
 
@@ -49,6 +50,7 @@ public:
     uint64_t blasMemoryBytes() const;
     uint32_t renderedSectionCount() const;
     uint32_t renderedBrickCount() const;
+    uint32_t sectionUpdateCount() const;
 
     const std::vector<uint8_t>& pixels() const;
 

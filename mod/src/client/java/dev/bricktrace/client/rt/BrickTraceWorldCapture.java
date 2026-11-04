@@ -22,8 +22,7 @@ public final class BrickTraceWorldCapture {
     private BrickTraceWorldCapture() {
     }
 
-    public static Snapshot capture(ClientLevel level, int centerChunkX, int centerChunkZ) {
-        final IntArrayList origins = new IntArrayList();
+    public static Snapshot capture(ClientLevel level, int centerChunkX, int centerChunkZ) {        final IntArrayList origins = new IntArrayList();
         final IntArrayList voxels = new IntArrayList();
         final int minSectionY = level.getMinSectionY();
 
@@ -58,6 +57,19 @@ public final class BrickTraceWorldCapture {
         }
 
         return new Snapshot(origins.toIntArray(), voxels.toIntArray());
+    }
+
+    public static int[] captureSection(LevelChunkSection section) {
+        final int[] voxels = new int[4096];
+        int index = 0;
+        for (int y = 0; y < 16; ++y) {
+            for (int z = 0; z < 16; ++z) {
+                for (int x = 0; x < 16; ++x) {
+                    voxels[index++] = encode(section.getBlockState(x, y, z));
+                }
+            }
+        }
+        return voxels;
     }
 
     private static int encode(BlockState state) {

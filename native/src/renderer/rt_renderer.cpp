@@ -126,6 +126,14 @@ struct RtRenderer::Impl {
     uint32_t sectionCount = 0;
     uint32_t brickCount = 0;
     uint32_t sbtRecordSize = 0;
+    uint32_t sectionUpdates = 0;
+
+    struct SectionLocation {
+        int32_t origin[3];
+        uint32_t occupancyBase;
+        uint32_t voxelBase;
+    };
+    std::vector<SectionLocation> sectionLocations;
     bool ownsDevice = true;
     bool ready = false;
 
@@ -150,6 +158,7 @@ struct RtRenderer::Impl {
     bool createPipeline();
     bool createQueryPool();
     bool uploadWorld(const WorldData& world);
+    bool updateSection(const int32_t origin[3], const uint32_t* sectionVoxels);
     bool renderFrame(const Camera& camera);
     bool uploadBuffers(const std::vector<SectionGpu>& sections,
                        const std::vector<uint32_t>& brickMap,
@@ -845,7 +854,9 @@ bool RtRenderer::Impl::uploadWorld(const WorldData& world) {
 
         uint32_t count = 0;
         for (int brick = 0; brick < kBricksPerSection; ++brick) {
-            if (occ[brick] == 0) continue;
+            // All 64 bricks become AABB primitives, even when empty: the occupancy mask
+            // makes the intersection shader skip them, and block edits can then fill a
+            // brick without touching the acceleration structure.
             brickMap.push_back(static_cast<uint32_t>(brick));
             occupancy.push_back(occ[brick]);
             for (int v = 0; v < kVoxelsPerBrick; ++v) {
@@ -865,6 +876,8 @@ bool RtRenderer::Impl::uploadWorld(const WorldData& world) {
         sections.push_back(gpu);
         brickCounts.push_back(count);
         keptSections.push_back(section);
+        sectionLocations.push_back({{section.origin[0], section.origin[1], section.origin[2]},
+                                    gpu.occupancyBase, gpu.voxelBase});
     }
 
     sectionCount = static_cast<uint32_t>(sections.size());
@@ -896,6 +909,75 @@ bool RtRenderer::Impl::uploadWorld(const WorldData& world) {
     }
 
     return buildAccelerationStructures(brickBounds, brickCounts, {}, sectionCount);
+}
+
+bool RtRenderer::Impl::updateSection(const int32_t origin[3], const uint32_t* sectionVoxels) {
+    if (!ready || sectionVoxels == nullptr) {
+        return false;
+    }
+
+    SectionLocation* location = nullptr;
+    for (auto& candidate : sectionLocations) {
+        if (candidate.origin[0] == origin[0] && candidate.origin[1] == origin[1] &&
+            candidate.origin[2] == origin[2]) {
+            location = &candidate;
+            break;
+        }
+    }
+    if (location == nullptr) {
+        return false;
+    }
+
+    std::vector<uint64_t> occupancy(kBricksPerSection, 0);
+    std::vector<uint32_t> brickVoxels(kVoxelsPerSection, 0);
+    for (int brick = 0; brick < kBricksPerSection; ++brick) {
+        const int bx = brick % kBricksPerAxis;
+        const int by = (brick / kBricksPerAxis) % kBricksPerAxis;
+        const int bz = brick / (kBricksPerAxis * kBricksPerAxis);
+        for (int v = 0; v < kVoxelsPerBrick; ++v) {
+            const int lx = v % kBrickSize;
+            const int lz = (v / kBrickSize) % kBrickSize;
+            const int ly = v / (kBrickSize * kBrickSize);
+            const int gx = bx * kBrickSize + lx;
+            const int gy = by * kBrickSize + ly;
+            const int gz = bz * kBrickSize + lz;
+            const uint32_t value = sectionVoxels[(gy * kSectionSize + gz) * kSectionSize + gx];
+            brickVoxels[static_cast<size_t>(brick) * kVoxelsPerBrick + v] = value;
+            if ((value & kMaterialMask) != 0) {
+                occupancy[brick] |= (1ull << v);
+            }
+        }
+    }
+
+    Buffer stagingOccupancy;
+    Buffer stagingVoxels;
+    if (!createBuffer(occupancy.size() * sizeof(uint64_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      stagingOccupancy) ||
+        !createBuffer(brickVoxels.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                      stagingVoxels)) {
+        return false;
+    }
+    std::memcpy(stagingOccupancy.mapped, occupancy.data(), occupancy.size() * sizeof(uint64_t));
+    std::memcpy(stagingVoxels.mapped, brickVoxels.data(), brickVoxels.size() * sizeof(uint32_t));
+
+    VkCommandBuffer cmd = beginSingleTime();
+    VkBufferCopy occupancyCopy{};
+    occupancyCopy.size = occupancy.size() * sizeof(uint64_t);
+    occupancyCopy.dstOffset = static_cast<VkDeviceSize>(location->occupancyBase) * sizeof(uint64_t);
+    vkCmdCopyBuffer(cmd, stagingOccupancy.buffer, occupancyBuffer.buffer, 1, &occupancyCopy);
+
+    VkBufferCopy voxelCopy{};
+    voxelCopy.size = brickVoxels.size() * sizeof(uint32_t);
+    voxelCopy.dstOffset = static_cast<VkDeviceSize>(location->voxelBase) * sizeof(uint32_t);
+    vkCmdCopyBuffer(cmd, stagingVoxels.buffer, voxelBuffer.buffer, 1, &voxelCopy);
+    endSingleTime(cmd);
+
+    destroyBuffer(stagingOccupancy);
+    destroyBuffer(stagingVoxels);
+    ++sectionUpdates;
+    return true;
 }
 
 bool RtRenderer::Impl::buildAccelerationStructures(
@@ -1338,6 +1420,10 @@ uint32_t RtRenderer::renderedBrickCount() const { return impl_->brickCount; }
 const std::vector<uint8_t>& RtRenderer::pixels() const { return impl_->pixels; }
 
 bool RtRenderer::uploadWorld(const WorldData& world) { return impl_->uploadWorld(world); }
+bool RtRenderer::updateSection(const int32_t origin[3], const uint32_t* voxels) {
+    return impl_->updateSection(origin, voxels);
+}
+uint32_t RtRenderer::sectionUpdateCount() const { return impl_->sectionUpdates; }
 bool RtRenderer::renderFrame(const Camera& camera) { return impl_->renderFrame(camera); }
 
 bool RtRenderer::savePng(const std::string& path) const {

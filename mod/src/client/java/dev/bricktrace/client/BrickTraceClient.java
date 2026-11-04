@@ -2,26 +2,37 @@ package dev.bricktrace.client;
 
 import dev.bricktrace.BrickTraceMod;
 import dev.bricktrace.BrickTraceVersion;
+import dev.bricktrace.client.rt.BrickTraceDirtySections;
 import dev.bricktrace.client.rt.BrickTraceRtView;
+import dev.bricktrace.client.rt.BrickTraceWorldCapture;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 
 public final class BrickTraceClient implements ClientModInitializer {
     private static final Identifier RT_LAYER =
             Identifier.fromNamespaceAndPath(BrickTraceMod.MOD_ID, "rt_layer");
+    private static BrickTraceRtView view;
     private static int worldTicks;
     private static boolean screenshotDone;
+    private static boolean afterScreenshotDone;
+    private static boolean editDone;
 
     @Override
     public void onInitializeClient() {
         BrickTraceMod.LOGGER.info("BrickTrace {} initializing (client)", BrickTraceVersion.VERSION);
 
-        final BrickTraceRtView view = new BrickTraceRtView();
+        view = new BrickTraceRtView();
         HudElementRegistry.addFirst(RT_LAYER, (graphics, deltaTracker) -> {
             final Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.level == null || minecraft.player == null || !view.initialize()) {
@@ -43,16 +54,59 @@ public final class BrickTraceClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.level == null) {
+            if (client.level == null || client.player == null) {
                 return;
             }
+            processDirtySections(client);
             worldTicks++;
-            if (!screenshotDone && worldTicks == 120
-                    && FabricLoader.getInstance().isDevelopmentEnvironment()) {
+
+            final boolean dev = FabricLoader.getInstance().isDevelopmentEnvironment();
+            if (dev && !editDone && worldTicks == 160) {
+                editDone = true;
+                // Place a small stone pillar in front of the player to exercise the update path.
+                final BlockPos target = BlockPos.containing(client.player.getEyePosition()
+                        .add(client.player.getLookAngle().scale(8.0)));
+                for (int y = 0; y < 3; ++y) {
+                    client.level.setBlockAndUpdate(target.above(y), Blocks.STONE.defaultBlockState());
+                }
+                BrickTraceMod.LOGGER.info("BrickTrace: placed test blocks at {}", target);
+            }
+            if (dev && !screenshotDone && worldTicks == 140) {
                 screenshotDone = true;
                 Screenshot.grab(client, true);
-                BrickTraceMod.LOGGER.info("BrickTrace: screenshot taken at tick {}", worldTicks);
+                BrickTraceMod.LOGGER.info("BrickTrace: before-edit screenshot at tick {}", worldTicks);
+            }
+            if (dev && !afterScreenshotDone && worldTicks == 220) {
+                afterScreenshotDone = true;
+                Screenshot.grab(client, true);
+                BrickTraceMod.LOGGER.info("BrickTrace: after-edit screenshot at tick {}", worldTicks);
             }
         });
+    }
+
+    private static void processDirtySections(Minecraft client) {
+        final long[] dirty = BrickTraceDirtySections.drain(16);
+        for (long key : dirty) {
+            final int sectionX = BrickTraceDirtySections.x(key);
+            final int sectionY = BrickTraceDirtySections.y(key);
+            final int sectionZ = BrickTraceDirtySections.z(key);
+
+            final ChunkAccess access = client.level.getChunkSource()
+                    .getChunk(sectionX, sectionZ, ChunkStatus.FULL, false);
+            if (!(access instanceof LevelChunk chunk)) {
+                continue;
+            }
+            final int index = sectionY - client.level.getMinSectionY();
+            final LevelChunkSection[] sections = chunk.getSections();
+            if (index < 0 || index >= sections.length || sections[index] == null) {
+                continue;
+            }
+
+            final int[] voxels = BrickTraceWorldCapture.captureSection(sections[index]);
+            if (view.updateSection(sectionX * 16, sectionY * 16, sectionZ * 16, voxels)) {
+                BrickTraceMod.LOGGER.debug("BrickTrace: section update at {} {} {}", sectionX,
+                        sectionY, sectionZ);
+            }
+        }
     }
 }

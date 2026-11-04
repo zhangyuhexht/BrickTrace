@@ -161,6 +161,24 @@ BrickTrace: RT center pixel rgba=(52, 52, 50, 255)
 
 ---
 
+## 4.8 增量方块更新（0 次 BLAS 重建）
+
+每个 section 固定生成 **64 个** AABB primitive（空 brick 的 occupancy 为 0，intersection shader 直接跳过），因此方块变化时只需要重写该 section 的 occupancy + voxel buffer：
+
+- `LevelChunk.setBlockState` 的 Mixin 把变化的 section 坐标放入脏集合
+- 客户端每 tick 处理最多 16 个 section：重新编码 4096 个体素 → `nativeUpdateSection`
+- native 侧仅做两次 `vkCmdCopyBuffer`（512 B occupancy + 16 KB voxels），**不调用任何 `vkCmdBuildAccelerationStructuresKHR`**
+
+前后对比截图（第 160 tick 在视线前方 8 格放置 3 个石头）：
+
+| 放置前 | 放置后 |
+|---|---|
+| ![before](../docs/images/rt-edit-before.png) | ![after](../docs/images/rt-edit-after.png) |
+
+限制：脏集合只处理已上传的 section（半径 6 区块内）；跨区块移动不会重新捕获。
+
+---
+
 ## 5. 基准（RTX 5060 Laptop，1080p）
 
 | 场景 | 分辨率 | sections / bricks | GPU 帧时间 | FPS | 显存（BLAS+TLAS） |

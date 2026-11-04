@@ -5,7 +5,8 @@
 	"client": [
 		"LevelRendererMixin",
 		"VulkanBackendMixin",
-		"VulkanDeviceMixin"
+		"VulkanDeviceMixin",
+		"LevelChunkMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

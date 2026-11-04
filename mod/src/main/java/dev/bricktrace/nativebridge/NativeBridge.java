@@ -90,6 +90,9 @@ public final class NativeBridge {
 
     public static native boolean nativeUploadWorld(long handle, int[] origins, int[] voxels);
 
+    public static native boolean nativeUpdateSection(long handle, int originX, int originY,
+                                                     int originZ, int[] voxels);
+
     public static native boolean nativeUploadDemoWorld(long handle);
 
     public static native boolean nativeRenderFrame(long handle, float x, float y, float z,

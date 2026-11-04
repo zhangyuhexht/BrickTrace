@@ -176,6 +176,21 @@ JNIEXPORT jboolean JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeU
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeUpdateSection(
+    JNIEnv* env, jclass, jlong handle, jint originX, jint originY, jint originZ,
+    jintArray voxels) {
+    auto* renderer = reinterpret_cast<bt::RtRenderer*>(handle);
+    if (renderer == nullptr || voxels == nullptr ||
+        env->GetArrayLength(voxels) < bt::kVoxelsPerSection) {
+        return JNI_FALSE;
+    }
+    auto* data = env->GetIntArrayElements(voxels, nullptr);
+    const int32_t origin[3] = {originX, originY, originZ};
+    const bool ok = renderer->updateSection(origin, reinterpret_cast<const uint32_t*>(data));
+    env->ReleaseIntArrayElements(voxels, data, JNI_ABORT);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jlong JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeCreateRenderer(
     JNIEnv* env, jclass, jstring shaderDir, jint width, jint height) {
     bt::RendererConfig config;
