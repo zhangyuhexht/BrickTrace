@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -89,6 +90,7 @@ struct RtRenderer::Impl {
 
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    VkCommandBuffer singleTimeCommandBuffer = VK_NULL_HANDLE;
     VkFence fence = VK_NULL_HANDLE;
     VkQueryPool queryPool = VK_NULL_HANDLE;
 
@@ -102,6 +104,11 @@ struct RtRenderer::Impl {
     VkDeviceMemory imageMemory = VK_NULL_HANDLE;
     VkImageView imageView = VK_NULL_HANDLE;
     Buffer readback;
+    VkCommandBuffer frameCommands[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkFence frameFences[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    Buffer frameReadback[2];
+    bool framePending[2] = {false, false};
+    int frameIndex = 0;
 
     Buffer sectionBuffer;
     Buffer brickMapBuffer;
@@ -181,6 +188,7 @@ struct RtRenderer::Impl {
     void updateParams(const Camera& camera);
     bool init();
     void clearWorld();
+    void flushFrames();
 };
 
 bool RtRenderer::Impl::createInstance() {
@@ -364,6 +372,25 @@ bool RtRenderer::Impl::createCommands() {
     VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     result = vkCreateFence(device, &fenceInfo, nullptr, &fence);
     if (result != VK_SUCCESS) return fail("vkCreateFence", result);
+
+    VkCommandBufferAllocateInfo frameAlloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    frameAlloc.commandPool = commandPool;
+    frameAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    frameAlloc.commandBufferCount = 2;
+    result = vkAllocateCommandBuffers(device, &frameAlloc, frameCommands);
+    if (result != VK_SUCCESS) return fail("vkAllocateCommandBuffers(frames)", result);
+
+    for (int i = 0; i < 2; ++i) {
+        result = vkCreateFence(device, &fenceInfo, nullptr, &frameFences[i]);
+        if (result != VK_SUCCESS) return fail("vkCreateFence(frame)", result);
+    }
+
+    VkCommandBufferAllocateInfo singleAlloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+    singleAlloc.commandPool = commandPool;
+    singleAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    singleAlloc.commandBufferCount = 1;
+    result = vkAllocateCommandBuffers(device, &singleAlloc, &singleTimeCommandBuffer);
+    if (result != VK_SUCCESS) return fail("vkAllocateCommandBuffers(single)", result);
     return true;
 }
 
@@ -393,11 +420,26 @@ bool RtRenderer::Impl::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memory);
 
     uint32_t typeIndex = UINT32_MAX;
-    for (uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
-        if ((requirements.memoryTypeBits & (1u << i)) &&
-            (memory.memoryTypes[i].propertyFlags & properties) == properties) {
-            typeIndex = i;
-            break;
+    const bool hostVisible = (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+    // Prefer cached host memory for readback: write-combined (BAR) memory makes CPU reads
+    // of frames extremely slow (measured ~6 ms for a 960x540 frame).
+    if (hostVisible) {
+        for (uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (memory.memoryTypes[i].propertyFlags & properties) == properties &&
+                (memory.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT)) {
+                typeIndex = i;
+                break;
+            }
+        }
+    }
+    if (typeIndex == UINT32_MAX) {
+        for (uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            if ((requirements.memoryTypeBits & (1u << i)) &&
+                (memory.memoryTypes[i].propertyFlags & properties) == properties) {
+                typeIndex = i;
+                break;
+            }
         }
     }
     if (typeIndex == UINT32_MAX) {
@@ -477,8 +519,8 @@ bool RtRenderer::Impl::copyToBuffer(Buffer& dst, const void* data, VkDeviceSize 
 VkCommandBuffer RtRenderer::Impl::beginSingleTime() {
     VkCommandBufferBeginInfo info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(commandBuffer, &info);
-    return commandBuffer;
+    vkBeginCommandBuffer(singleTimeCommandBuffer, &info);
+    return singleTimeCommandBuffer;
 }
 
 void RtRenderer::Impl::endSingleTime(VkCommandBuffer cmd) {
@@ -578,6 +620,14 @@ bool RtRenderer::Impl::createImage() {
                       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                       readback)) {
         return false;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (!createBuffer(static_cast<VkDeviceSize>(pixels.size()),
+                          VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          frameReadback[i])) {
+            return false;
+        }
     }
     return true;
 }
@@ -1270,9 +1320,25 @@ void RtRenderer::Impl::updateParams(const Camera& camera) {
 bool RtRenderer::Impl::renderFrame(const Camera& camera) {
     if (!ready || tlas == VK_NULL_HANDLE) return false;
 
-    updateParams(camera);
+    const int current = frameIndex & 1;
+    if (framePending[current]) {
+        vkWaitForFences(device, 1, &frameFences[current], VK_TRUE, UINT64_MAX);
+        uint64_t previous[2] = {0, 0};
+        if (vkGetQueryPoolResults(device, queryPool, 0, 2, sizeof(previous), previous,
+                                  sizeof(uint64_t),
+                                  VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+            VkPhysicalDeviceProperties props{};
+            vkGetPhysicalDeviceProperties(physicalDevice, &props);
+            lastGpuMs = static_cast<double>(previous[1] - previous[0]) *
+                        static_cast<double>(props.limits.timestampPeriod) / 1e6;
+        }
+        std::memcpy(pixels.data(), frameReadback[current].mapped, pixels.size());
+        framePending[current] = false;
+    }
 
-    vkResetFences(device, 1, &fence);
+    updateParams(camera);
+    commandBuffer = frameCommands[current];
+
     vkResetCommandBuffer(commandBuffer, 0);
 
     VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -1315,7 +1381,7 @@ bool RtRenderer::Impl::renderFrame(const Camera& camera) {
     copy.imageSubresource.layerCount = 1;
     copy.imageExtent = {config.width, config.height, 1};
     vkCmdCopyImageToBuffer(commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                           readback.buffer, 1, &copy);
+                           frameReadback[current].buffer, 1, &copy);
 
     VkImageMemoryBarrier back{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     back.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -1332,24 +1398,33 @@ bool RtRenderer::Impl::renderFrame(const Camera& camera) {
                          VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, 0, 0, nullptr, 0, nullptr, 1,
                          &back);
 
-    if (!submitAndWait(commandBuffer)) return false;
+    vkEndCommandBuffer(commandBuffer);
 
-    uint64_t timestamps[2] = {0, 0};
-    if (vkGetQueryPoolResults(device, queryPool, 0, 2, sizeof(timestamps), timestamps,
-                              sizeof(uint64_t),
-                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) == VK_SUCCESS) {
-        VkPhysicalDeviceProperties props{};
-        vkGetPhysicalDeviceProperties(physicalDevice, &props);
-        lastGpuMs = static_cast<double>(timestamps[1] - timestamps[0]) *
-                    static_cast<double>(props.limits.timestampPeriod) / 1e6;
+    VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &commandBuffer;
+    vkResetFences(device, 1, &frameFences[current]);
+    if (vkQueueSubmit(queue, 1, &submit, frameFences[current]) != VK_SUCCESS) {
+        return failText("vkQueueSubmit(frame) failed");
     }
-
-    std::memcpy(pixels.data(), readback.mapped, pixels.size());
+    framePending[current] = true;
+    ++frameIndex;
     return true;
 }
 
-void RtRenderer::Impl::clearWorld() {
-    for (auto as : blasList) {
+void RtRenderer::Impl::flushFrames() {
+    for (int i = 0; i < 2; ++i) {
+        if (!framePending[i]) continue;
+        vkWaitForFences(device, 1, &frameFences[i], VK_TRUE, UINT64_MAX);
+        framePending[i] = false;
+    }
+    if (frameIndex > 0) {
+        const int last = (frameIndex - 1) & 1;
+        std::memcpy(pixels.data(), frameReadback[last].mapped, pixels.size());
+    }
+}
+
+void RtRenderer::Impl::clearWorld() {    for (auto as : blasList) {
         if (as != VK_NULL_HANDLE) vkDestroyAccelerationStructureKHR(device, as, nullptr);
     }
     blasList.clear();
@@ -1392,6 +1467,10 @@ RtRenderer::~RtRenderer() {
     impl_->clearWorld();
 
     if (impl_->queryPool != VK_NULL_HANDLE) vkDestroyQueryPool(impl_->device, impl_->queryPool, nullptr);
+    for (int i = 0; i < 2; ++i) {
+        if (impl_->frameReadback[i].buffer != VK_NULL_HANDLE) impl_->destroyBuffer(impl_->frameReadback[i]);
+        if (impl_->frameFences[i] != VK_NULL_HANDLE) vkDestroyFence(impl_->device, impl_->frameFences[i], nullptr);
+    }
     if (impl_->pipeline != VK_NULL_HANDLE) vkDestroyPipeline(impl_->device, impl_->pipeline, nullptr);
     if (impl_->sbtBuffer.buffer != VK_NULL_HANDLE) impl_->destroyBuffer(impl_->sbtBuffer);
     if (impl_->paramsBuffer.buffer != VK_NULL_HANDLE) impl_->destroyBuffer(impl_->paramsBuffer);
@@ -1427,6 +1506,7 @@ uint32_t RtRenderer::sectionUpdateCount() const { return impl_->sectionUpdates; 
 bool RtRenderer::renderFrame(const Camera& camera) { return impl_->renderFrame(camera); }
 
 bool RtRenderer::savePng(const std::string& path) const {
+    impl_->flushFrames();
     return writePng(path, impl_->pixels.data(), static_cast<int>(impl_->config.width),
                     static_cast<int>(impl_->config.height));
 }

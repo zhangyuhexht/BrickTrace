@@ -180,10 +180,15 @@ BrickTrace: RT center pixel rgba=(52, 52, 50, 255)
 实测开销（960×540，游戏内每帧渲染 + 回读 + 纹理上传）：
 
 ```
-BrickTrace: 3720 RT frames, avg 7.99 ms (render + readback + upload)
+BrickTrace: 3600 RT frames, avg 0.85 ms total (render 0.24, copy 0.13, memcpy 0.15, upload 0.34)
 ```
 
-其中 GPU 光线追踪只占约 0.4 ms，其余是 `vkCmdCopyImageToBuffer` + 等待 + 上传纹理。去掉 CPU 回读（直接共享图像）是下一步最大的性能项。
+优化前是 8.0 ms/帧。根因不是 GPU（光线追踪本身约 0.3 ms），而是两件事：
+
+1. 每帧同步等待队列，把 Minecraft 自己一帧的 GPU 时间也算进来了。改成双缓冲、延迟一帧读取。
+2. 回读缓冲落在 write-combined（BAR）内存上，CPU 读 2 MB 要 6 ms。改为优先选择 `HOST_CACHED` 内存后降到 0.14 ms。
+
+剩余成本主要是把 2 MB 像素拷进 `NativeImage` 并上传纹理（约 0.5 ms）。
 
 ---
 

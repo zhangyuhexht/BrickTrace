@@ -31,6 +31,10 @@ public final class BrickTraceRtView implements AutoCloseable {
     private int lastCenterChunkZ = Integer.MIN_VALUE;
     private long frameCount;
     private double frameMsSum;
+    private double renderMsSum;
+    private double copyMsSum;
+    private double memcpyMsSum;
+    private double uploadMsSum;
 
     public boolean initialize() {
         if (ready || failed) {
@@ -92,23 +96,39 @@ public final class BrickTraceRtView implements AutoCloseable {
         if (!ready) {
             return;
         }
-        final long startNanos = System.nanoTime();
-        if (!NativeBridge.nativeRenderFrame(handle, pose.x, pose.y, pose.z, pose.yawRadians,
+        final long startNanos = System.nanoTime();        if (!NativeBridge.nativeRenderFrame(handle, pose.x, pose.y, pose.z, pose.yawRadians,
                 pose.pitchRadians, pose.fovDegrees)) {
             return;
         }
+        final long afterRender = System.nanoTime();
         if (!NativeBridge.nativeCopyPixels(handle, pixels)) {
             return;
         }
+        final long afterCopy = System.nanoTime();
         MemoryUtil.memCopy(MemoryUtil.memAddress(pixels), image.getPointer(), (long) WIDTH * HEIGHT * 4);
+        final long afterMemcpy = System.nanoTime();
         texture.upload();
+        final long afterUpload = System.nanoTime();
 
         frameCount++;
-        frameMsSum += (System.nanoTime() - startNanos) / 1_000_000.0;
+        frameMsSum += (afterUpload - startNanos) / 1_000_000.0;
+        renderMsSum += (afterRender - startNanos) / 1_000_000.0;
+        copyMsSum += (afterCopy - afterRender) / 1_000_000.0;
+        memcpyMsSum += (afterMemcpy - afterCopy) / 1_000_000.0;
+        uploadMsSum += (afterUpload - afterMemcpy) / 1_000_000.0;
         if (frameCount % 120 == 0) {
-            BrickTraceMod.LOGGER.info("BrickTrace: {} RT frames, avg {} ms (render + readback + upload)",
-                    frameCount, String.format("%.2f", frameMsSum / 120.0));
+            BrickTraceMod.LOGGER.info(
+                    "BrickTrace: {} RT frames, avg {} ms total (render {}, copy {}, memcpy {}, upload {})",
+                    frameCount, String.format("%.2f", frameMsSum / 120.0),
+                    String.format("%.2f", renderMsSum / 120.0),
+                    String.format("%.2f", copyMsSum / 120.0),
+                    String.format("%.2f", memcpyMsSum / 120.0),
+                    String.format("%.2f", uploadMsSum / 120.0));
             frameMsSum = 0.0;
+            renderMsSum = 0.0;
+            copyMsSum = 0.0;
+            memcpyMsSum = 0.0;
+            uploadMsSum = 0.0;
         }
 
         if (!loggedCenterPixel) {
