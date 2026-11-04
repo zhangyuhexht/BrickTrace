@@ -14,6 +14,12 @@ struct RendererConfig {
     uint32_t height = 1080;
     std::string shaderDir;
     int deviceIndex = -1;
+
+    // When set, reuse an existing Vulkan device instead of creating one (Minecraft's device).
+    uint64_t externalDevice = 0;
+    uint64_t externalPhysicalDevice = 0;
+    uint64_t externalQueue = 0;
+    uint32_t externalQueueFamily = 0;
 };
 
 struct Camera {

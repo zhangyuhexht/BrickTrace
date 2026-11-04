@@ -126,6 +126,7 @@ struct RtRenderer::Impl {
     uint32_t sectionCount = 0;
     uint32_t brickCount = 0;
     uint32_t sbtRecordSize = 0;
+    bool ownsDevice = true;
     bool ready = false;
 
     bool fail(const char* what, VkResult result) {
@@ -734,9 +735,57 @@ bool RtRenderer::Impl::createPipeline() {
 }
 
 bool RtRenderer::Impl::init() {
-    if (!createInstance()) return false;
-    if (!pickDevice()) return false;
-    if (!createDevice()) return false;
+    const bool external = config.externalDevice != 0;
+    if (external) {
+        device = reinterpret_cast<VkDevice>(static_cast<uintptr_t>(config.externalDevice));
+        physicalDevice =
+            reinterpret_cast<VkPhysicalDevice>(static_cast<uintptr_t>(config.externalPhysicalDevice));
+        queue = reinterpret_cast<VkQueue>(static_cast<uintptr_t>(config.externalQueue));
+        queueFamily = config.externalQueueFamily;
+        ownsDevice = false;
+
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(physicalDevice, &props);
+        deviceName = props.deviceName;
+
+        rtProperties.pNext = &asProperties;
+        VkPhysicalDeviceProperties2 props2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        props2.pNext = &rtProperties;
+        vkGetPhysicalDeviceProperties2(physicalDevice, &props2);
+
+        auto load = [this](const char* name) {
+            return vkGetDeviceProcAddr(device, name);
+        };
+        g_createAccelerationStructure = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
+            load("vkCreateAccelerationStructureKHR"));
+        g_destroyAccelerationStructure = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
+            load("vkDestroyAccelerationStructureKHR"));
+        g_getAccelerationStructureBuildSizes =
+            reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
+                load("vkGetAccelerationStructureBuildSizesKHR"));
+        g_cmdBuildAccelerationStructures =
+            reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
+                load("vkCmdBuildAccelerationStructuresKHR"));
+        g_getAccelerationStructureDeviceAddress =
+            reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
+                load("vkGetAccelerationStructureDeviceAddressKHR"));
+        g_createRayTracingPipelines = reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(
+            load("vkCreateRayTracingPipelinesKHR"));
+        g_getRayTracingShaderGroupHandles =
+            reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(
+                load("vkGetRayTracingShaderGroupHandlesKHR"));
+        g_cmdTraceRays = reinterpret_cast<PFN_vkCmdTraceRaysKHR>(load("vkCmdTraceRaysKHR"));
+
+        if (!g_createAccelerationStructure || !g_cmdBuildAccelerationStructures ||
+            !g_cmdTraceRays || !g_createRayTracingPipelines) {
+            return failText("external device does not expose ray tracing entry points");
+        }
+    } else {
+        if (!createInstance()) return false;
+        if (!pickDevice()) return false;
+        if (!createDevice()) return false;
+    }
+
     if (!createCommands()) return false;
     if (!createImage()) return false;
     if (!createDescriptors()) return false;
@@ -1273,8 +1322,10 @@ RtRenderer::~RtRenderer() {
     if (impl_->imageMemory != VK_NULL_HANDLE) vkFreeMemory(impl_->device, impl_->imageMemory, nullptr);
     if (impl_->fence != VK_NULL_HANDLE) vkDestroyFence(impl_->device, impl_->fence, nullptr);
     if (impl_->commandPool != VK_NULL_HANDLE) vkDestroyCommandPool(impl_->device, impl_->commandPool, nullptr);
-    if (impl_->device != VK_NULL_HANDLE) vkDestroyDevice(impl_->device, nullptr);
-    if (impl_->instance != VK_NULL_HANDLE) vkDestroyInstance(impl_->instance, nullptr);
+    if (impl_->ownsDevice) {
+        if (impl_->device != VK_NULL_HANDLE) vkDestroyDevice(impl_->device, nullptr);
+        if (impl_->instance != VK_NULL_HANDLE) vkDestroyInstance(impl_->instance, nullptr);
+    }
 }
 
 bool RtRenderer::valid() const { return impl_ && impl_->ready; }

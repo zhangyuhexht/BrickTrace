@@ -3,7 +3,9 @@
 	"package": "dev.bricktrace.client.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"LevelRendererMixin"
+		"LevelRendererMixin",
+		"VulkanBackendMixin",
+		"VulkanDeviceMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -118,6 +118,32 @@ com.mojang.renderpearl.backend.vulkan.VulkanPhysicalDevice
 
 ---
 
+## 4.6 官方 VkDevice 接入与上屏
+
+Minecraft 26.3 的 Vulkan 后端把 device 创建集中在 `VulkanBackend.createDevice(FeatureSet, VulkanPhysicalDevice)`，feature 由 `FeatureSet`（扩展名 + `VulkanPNextStruct`/`VulkanFeature`）描述并支持 `composite()`。因此不需要改写 device 创建逻辑，只需要把 BrickTrace 的 feature set 复合进去：
+
+| 注入项 | 值 |
+|---|---|
+| 设备扩展 | `VK_KHR_acceleration_structure`、`VK_KHR_ray_tracing_pipeline`、`VK_KHR_deferred_host_operations` |
+| feature | `accelerationStructure`、`rayTracingPipeline`、`bufferDeviceAddress`、`shaderInt64` |
+
+游戏日志确认生效：
+
+```
+BrickTrace: captured Minecraft VkDevice (NVIDIA GeForce RTX 5060 Laptop GPU), queue family 0 rt=true
+BrickTrace RT frame on Minecraft's VkDevice -> ...\bricktrace_game_device_frame.png (ok)
+```
+
+即：BLAS/TLAS 与 RT pipeline 直接建在**游戏自己的 `VkDevice`** 上，native 不再创建第二个 device（`RendererConfig.externalDevice` 路径）。
+
+上屏 v1 用 HUD 层：native 每帧渲染 960×540，读回像素写入 `NativeImage`/`DynamicTexture`，通过 `GuiGraphicsExtractor.blit(GpuTextureView, GpuSampler, ...)` 铺满屏幕。GUI blit 的四个 float 参数实际是 `(u0, u1, v0, v1)` 归一化坐标（反汇编 `BlitRenderState.buildVertices` 确认），不是 `(u, v, width, height)`。
+
+![in-game](../docs/images/rt-ingame.png)
+
+当前限制：相机固定在 demo 世界，世界数据仍是程序化生成，上屏走 CPU 回读（960×540），没有直接共享图像。
+
+---
+
 ## 5. 基准（RTX 5060 Laptop，1080p）
 
 | 场景 | 分辨率 | sections / bricks | GPU 帧时间 | FPS | 显存（BLAS+TLAS） |

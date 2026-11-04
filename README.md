@@ -4,9 +4,11 @@ Open-source hardware ray tracing for **Minecraft Java Edition 26.3**.
 
 **Static brick BVH + dynamic voxel payload** — the RT cores traverse a BLAS of 4³ brick AABBs, an intersection shader runs voxel DDA inside each brick, and block changes only rewrite voxel data. No acceleration structure is rebuilt when the world changes.
 
+![BrickTrace running inside Minecraft 26.3](docs/images/rt-ingame.png)
+
 ![BrickTrace 1080p ray traced terrain](docs/images/rt-1080p.png)
 
-> Status: **0.1.0 prototype**. The native Vulkan ray tracing renderer works and is benchmarked on an RTX 5060. The Fabric mod builds, loads in 26.3 under Fabric (verified on both the OpenGL and the Vulkan backend), drives the renderer through JNI and is verified end-to-end with a Fabric client gametest. In-game compositing (RT image on the game swapchain) and enabling ray tracing on Minecraft's own `VkDevice` are the next steps.
+> Status: **0.2.0 prototype**. The native Vulkan ray tracer runs on **Minecraft's own VkDevice** (ray tracing extensions are injected into the game's device creation), and the ray traced frame is presented in-game as a full screen layer. World data is still the procedural demo world and the camera is fixed; wiring real chunks and the player camera is next.
 
 ## Why
 
