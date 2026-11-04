@@ -4,6 +4,8 @@ import dev.bricktrace.BrickTraceMod;
 import dev.bricktrace.BrickTraceVersion;
 import dev.bricktrace.client.rt.BrickTraceDirtySections;
 import dev.bricktrace.client.rt.BrickTraceRtView;
+import dev.bricktrace.client.rt.BrickTraceSettings;
+import dev.bricktrace.client.rt.BrickTraceSettingsScreen;
 import dev.bricktrace.client.rt.BrickTraceWorldCapture;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -27,11 +29,13 @@ public final class BrickTraceClient implements ClientModInitializer {
     private static boolean screenshotDone;
     private static boolean afterScreenshotDone;
     private static boolean editDone;
+    private static boolean f9WasDown;
     private static BlockPos pillarPos;
 
     @Override
     public void onInitializeClient() {
         BrickTraceMod.LOGGER.info("BrickTrace {} initializing (client)", BrickTraceVersion.VERSION);
+        BrickTraceSettings.load();
 
         view = new BrickTraceRtView();
         HudElementRegistry.addFirst(RT_LAYER, (graphics, deltaTracker) -> {
@@ -55,13 +59,21 @@ public final class BrickTraceClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            final boolean f9Down =
+                    com.mojang.blaze3d.platform.InputConstants.isKeyDown(
+                            com.mojang.blaze3d.platform.InputConstants.KEY_F9);
+            if (f9Down && !f9WasDown && client.level != null) {
+                client.setScreenAndShow(new BrickTraceSettingsScreen());
+            }
+            f9WasDown = f9Down;
+
             if (client.level == null || client.player == null) {
                 return;
             }
             processDirtySections(client);
             worldTicks++;
 
-            final boolean dev = FabricLoader.getInstance().isDevelopmentEnvironment();
+            final boolean dev = BrickTraceSettings.autoTest;
             if (dev && !editDone && worldTicks == 160) {
                 editDone = true;
                 // Place a small stone pillar in front of the player to exercise the update path.

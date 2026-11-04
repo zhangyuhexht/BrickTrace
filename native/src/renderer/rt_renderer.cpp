@@ -1281,6 +1281,7 @@ void RtRenderer::Impl::updateParams(const Camera& camera) {
         float camUp[4];
         float sunDir[4];
         float misc[4];
+        float flags[4];
     } params{};
 
     const float cy = std::cos(camera.yaw);
@@ -1313,6 +1314,8 @@ void RtRenderer::Impl::updateParams(const Camera& camera) {
     params.misc[1] = static_cast<float>(config.height);
     params.misc[2] = std::tan(camera.fovDegrees * 3.14159265358979f / 360.0f);
     params.misc[3] = 0.0f;
+    params.flags[0] = config.shadows ? 1.0f : 0.0f;
+    params.flags[1] = static_cast<float>(config.debugMode);
 
     std::memcpy(paramsBuffer.mapped, &params, sizeof(params));
 }
@@ -1503,6 +1506,10 @@ bool RtRenderer::updateSection(const int32_t origin[3], const uint32_t* voxels) 
     return impl_->updateSection(origin, voxels);
 }
 uint32_t RtRenderer::sectionUpdateCount() const { return impl_->sectionUpdates; }
+void RtRenderer::setOptions(bool shadows, int debugMode) {
+    impl_->config.shadows = shadows;
+    impl_->config.debugMode = debugMode;
+}
 bool RtRenderer::renderFrame(const Camera& camera) { return impl_->renderFrame(camera); }
 
 bool RtRenderer::savePng(const std::string& path) const {

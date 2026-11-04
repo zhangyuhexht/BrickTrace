@@ -12,6 +12,7 @@ layout(binding = 6) uniform Params {
     vec4 camUp;
     vec4 sunDir;
     vec4 misc;  // width, height, tanHalfFov, frame
+    vec4 flags; // x = shadows, y = debug mode
 } params;
 
 struct HitPayload {
@@ -56,16 +57,23 @@ void main() {
     if (primary.hit != 0) {
         const vec3 origin = params.camPos.xyz + dir * primary.t;
         shadowLit = 1.0;
-        traceRayEXT(topLevelAS,
-                    gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
-                    0xff, 0, 1, 1,
-                    origin + primary.normal * 0.15, 0.02, normalize(params.sunDir.xyz), 4000.0, 1);
+        if (params.flags.x > 0.5) {
+            traceRayEXT(topLevelAS,
+                        gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT,
+                        0xff, 0, 1, 1,
+                        origin + primary.normal * 0.15, 0.02,
+                        normalize(params.sunDir.xyz), 4000.0, 1);
+        }
 
         const float ndl = max(dot(primary.normal, normalize(params.sunDir.xyz)), 0.0);
         const float sky = primary.normal.y * 0.5 + 0.5;
         const float ambient = 0.18 + 0.35 * sky;
         const float direct = shadowLit * ndl * 0.9;
         color = primary.color * (ambient + direct) + vec3(0.02, 0.03, 0.05) * sky;
+
+        if (params.flags.y > 0.5) {
+            color = params.flags.y < 1.5 ? vec3(shadowLit) : primary.normal * 0.5 + 0.5;
+        }
     } else {
         color = skyColor(dir);
     }

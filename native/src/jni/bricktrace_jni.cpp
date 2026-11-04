@@ -191,6 +191,14 @@ JNIEXPORT jboolean JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeU
     return ok ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT void JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeSetOptions(
+    JNIEnv*, jclass, jlong handle, jboolean shadows, jint debugMode) {
+    auto* renderer = reinterpret_cast<bt::RtRenderer*>(handle);
+    if (renderer != nullptr) {
+        renderer->setOptions(shadows == JNI_TRUE, static_cast<int>(debugMode));
+    }
+}
+
 JNIEXPORT jlong JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeCreateRenderer(
     JNIEnv* env, jclass, jstring shaderDir, jint width, jint height) {
     bt::RendererConfig config;

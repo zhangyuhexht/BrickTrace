@@ -14,6 +14,8 @@ struct RendererConfig {
     uint32_t height = 1080;
     std::string shaderDir;
     int deviceIndex = -1;
+    bool shadows = true;
+    int debugMode = 0;  // 0 = shaded, 1 = shadow term, 2 = normals
 
     // When set, reuse an existing Vulkan device instead of creating one (Minecraft's device).
     uint64_t externalDevice = 0;
@@ -44,6 +46,7 @@ public:
     bool uploadWorld(const WorldData& world);
     bool updateSection(const int32_t origin[3], const uint32_t* voxels);
     bool renderFrame(const Camera& camera);
+    void setOptions(bool shadows, int debugMode);
     bool savePng(const std::string& path) const;
 
     double lastGpuMs() const;

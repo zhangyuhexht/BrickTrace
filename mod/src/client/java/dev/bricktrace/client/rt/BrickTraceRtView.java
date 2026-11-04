@@ -18,6 +18,7 @@ public final class BrickTraceRtView implements AutoCloseable {
     private static final Identifier TEXTURE_ID =
             Identifier.fromNamespaceAndPath(BrickTraceMod.MOD_ID, "rt_frame");
 
+    private static BrickTraceRtView active;
     private long handle;
     private NativeImage image;
     private DynamicTexture texture;
@@ -55,6 +56,8 @@ public final class BrickTraceRtView implements AutoCloseable {
         texture = new DynamicTexture(() -> "bricktrace-rt", image);
         Minecraft.getInstance().getTextureManager().register(TEXTURE_ID, texture);
         pixels = MemoryUtil.memAlloc(WIDTH * HEIGHT * 4);
+        active = this;
+        NativeBridge.nativeSetOptions(handle, BrickTraceSettings.shadows, BrickTraceSettings.debugMode);
         ready = true;
         BrickTraceMod.LOGGER.info("BrickTrace: RT view ready ({}x{})", WIDTH, HEIGHT);
         return true;
@@ -91,9 +94,17 @@ public final class BrickTraceRtView implements AutoCloseable {
         return ready && NativeBridge.nativeUpdateSection(handle, originX, originY, originZ, voxels);
     }
 
+    public static void applySettingsToNative() {
+        final BrickTraceRtView view = active;
+        if (view != null && view.handle != 0L) {
+            NativeBridge.nativeSetOptions(view.handle, BrickTraceSettings.shadows,
+                    BrickTraceSettings.debugMode);
+        }
+    }
+
     /** Renders one ray traced frame. Called once per client frame while a world is loaded. */
     public void render(CameraPose pose) {
-        if (!ready) {
+        if (!ready || !BrickTraceSettings.rayTracing) {
             return;
         }
         final long startNanos = System.nanoTime();        if (!NativeBridge.nativeRenderFrame(handle, pose.x, pose.y, pose.z, pose.yawRadians,
@@ -141,7 +152,7 @@ public final class BrickTraceRtView implements AutoCloseable {
     }
 
     public void draw(GuiGraphicsExtractor graphics) {
-        if (!ready || texture == null) {
+        if (!ready || texture == null || !BrickTraceSettings.rayTracing) {
             return;
         }
         final Minecraft minecraft = Minecraft.getInstance();
