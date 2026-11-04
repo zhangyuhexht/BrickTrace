@@ -25,6 +25,7 @@ public final class BrickTraceRtView implements AutoCloseable {
     private boolean ready;
     private boolean failed;
     private boolean loggedCenterPixel;
+    private boolean worldUploaded;
 
     public boolean initialize() {
         if (ready || failed) {
@@ -40,11 +41,6 @@ public final class BrickTraceRtView implements AutoCloseable {
             failed = true;
             return false;
         }
-        if (!NativeBridge.nativeUploadDemoWorld(handle)) {
-            BrickTraceMod.LOGGER.error("BrickTrace: world upload failed");
-            failed = true;
-            return false;
-        }
 
         image = new NativeImage(WIDTH, HEIGHT, true);
         texture = new DynamicTexture(() -> "bricktrace-rt", image);
@@ -53,6 +49,26 @@ public final class BrickTraceRtView implements AutoCloseable {
         ready = true;
         BrickTraceMod.LOGGER.info("BrickTrace: RT view ready ({}x{})", WIDTH, HEIGHT);
         return true;
+    }
+
+    /** Captures the loaded chunks around the player once and uploads them to the renderer. */
+    public void ensureWorld(net.minecraft.client.multiplayer.ClientLevel level, int chunkX,
+                            int chunkZ) {
+        if (!ready || worldUploaded) {
+            return;
+        }
+        final BrickTraceWorldCapture.Snapshot snapshot =
+                BrickTraceWorldCapture.capture(level, chunkX, chunkZ);
+        if (snapshot.sectionCount() > 0
+                && NativeBridge.nativeUploadWorld(handle, snapshot.origins(), snapshot.voxels())) {
+            worldUploaded = true;
+            BrickTraceMod.LOGGER.info("BrickTrace: uploaded {} real sections from the client world",
+                    snapshot.sectionCount());
+            return;
+        }
+        worldUploaded = NativeBridge.nativeUploadDemoWorld(handle);
+        BrickTraceMod.LOGGER.warn("BrickTrace: no real sections captured, using demo world ({})",
+                worldUploaded);
     }
 
     /** Renders one ray traced frame. Called once per client frame while a world is loaded. */

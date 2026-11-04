@@ -8,7 +8,7 @@ Open-source hardware ray tracing for **Minecraft Java Edition 26.3**.
 
 ![BrickTrace 1080p ray traced terrain](docs/images/rt-1080p.png)
 
-> Status: **0.2.0 prototype**. The native Vulkan ray tracer runs on **Minecraft's own VkDevice** (ray tracing extensions are injected into the game's device creation), and the ray traced frame is presented in-game as a full screen layer. World data is still the procedural demo world and the camera is fixed; wiring real chunks and the player camera is next.
+> Status: **0.2.0 prototype**. The native Vulkan ray tracer runs on **Minecraft's own VkDevice**, streams the loaded client chunks into brick voxel data, follows the player camera and presents the ray traced frame in-game as a full screen layer. Block edits do not update the world yet (one snapshot per join), and materials use a small palette instead of textures.
 
 ## Why
 

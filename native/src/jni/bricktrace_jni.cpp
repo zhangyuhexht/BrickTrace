@@ -144,6 +144,38 @@ JNIEXPORT jboolean JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeR
     return renderer.savePng(path) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeUploadWorld(
+    JNIEnv* env, jclass, jlong handle, jintArray origins, jintArray voxels) {
+    auto* renderer = reinterpret_cast<bt::RtRenderer*>(handle);
+    if (renderer == nullptr || origins == nullptr || voxels == nullptr) return JNI_FALSE;
+
+    const jsize originCount = env->GetArrayLength(origins);
+    const jsize voxelCount = env->GetArrayLength(voxels);
+    const jsize sectionCount = originCount / 3;
+    if (sectionCount == 0 || voxelCount < sectionCount * bt::kVoxelsPerSection) {
+        return JNI_FALSE;
+    }
+
+    auto* originData = env->GetIntArrayElements(origins, nullptr);
+    auto* voxelData = env->GetIntArrayElements(voxels, nullptr);
+
+    bt::WorldData world;
+    world.sections.resize(static_cast<size_t>(sectionCount));
+    for (jsize i = 0; i < sectionCount; ++i) {
+        bt::SectionData& section = world.sections[static_cast<size_t>(i)];
+        section.origin[0] = originData[i * 3 + 0];
+        section.origin[1] = originData[i * 3 + 1];
+        section.origin[2] = originData[i * 3 + 2];
+        std::memcpy(section.voxels, voxelData + static_cast<size_t>(i) * bt::kVoxelsPerSection,
+                    sizeof(section.voxels));
+    }
+
+    const bool ok = renderer->uploadWorld(world);
+    env->ReleaseIntArrayElements(origins, originData, JNI_ABORT);
+    env->ReleaseIntArrayElements(voxels, voxelData, JNI_ABORT);
+    return ok ? JNI_TRUE : JNI_FALSE;
+}
+
 JNIEXPORT jlong JNICALL Java_dev_bricktrace_nativebridge_NativeBridge_nativeCreateRenderer(
     JNIEnv* env, jclass, jstring shaderDir, jint width, jint height) {
     bt::RendererConfig config;

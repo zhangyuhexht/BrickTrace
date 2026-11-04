@@ -26,6 +26,10 @@ vec3 materialColor(uint material) {
     if (material == 2u) return vec3(0.47, 0.33, 0.23);  // dirt
     if (material == 3u) return vec3(0.32, 0.58, 0.26);  // grass
     if (material == 4u) return vec3(0.16, 0.38, 0.62);  // water
+    if (material == 5u) return vec3(0.55, 0.53, 0.48);  // generic solid
+    if (material == 6u) return vec3(0.24, 0.48, 0.19);  // leaves
+    if (material == 7u) return vec3(0.44, 0.30, 0.18);  // wood
+    if (material == 8u) return vec3(0.62, 0.76, 0.82);  // glass / ice
     return vec3(0.8, 0.2, 0.8);
 }
 

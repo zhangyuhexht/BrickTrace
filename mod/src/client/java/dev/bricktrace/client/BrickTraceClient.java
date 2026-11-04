@@ -24,10 +24,21 @@ public final class BrickTraceClient implements ClientModInitializer {
         final BrickTraceRtView view = new BrickTraceRtView();
         HudElementRegistry.addFirst(RT_LAYER, (graphics, deltaTracker) -> {
             final Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft.level == null || !view.initialize()) {
+            if (minecraft.level == null || minecraft.player == null || !view.initialize()) {
                 return;
             }
-            view.render(new BrickTraceRtView.CameraPose(128.0f, 96.0f, 40.0f, 0.0f, -0.22f, 70.0f));
+            view.ensureWorld(minecraft.level,
+                    minecraft.player.chunkPosition().getMinBlockX() >> 4,
+                    minecraft.player.chunkPosition().getMinBlockZ() >> 4);
+
+            final net.minecraft.client.Camera camera = minecraft.gameRenderer.mainCamera();
+            if (camera == null || !camera.isInitialized()) {
+                return;
+            }
+            final net.minecraft.world.phys.Vec3 position = camera.position();
+            view.render(new BrickTraceRtView.CameraPose((float) position.x, (float) position.y,
+                    (float) position.z, (float) Math.toRadians(-camera.yRot()),
+                    (float) Math.toRadians(-camera.xRot()), camera.getFov()));
             view.draw(graphics);
         });
 

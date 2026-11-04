@@ -88,6 +88,8 @@ public final class NativeBridge {
 
     public static native long nativeCreateRenderer(String shaderDir, int width, int height);
 
+    public static native boolean nativeUploadWorld(long handle, int[] origins, int[] voxels);
+
     public static native boolean nativeUploadDemoWorld(long handle);
 
     public static native boolean nativeRenderFrame(long handle, float x, float y, float z,

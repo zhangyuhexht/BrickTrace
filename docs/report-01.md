@@ -144,6 +144,23 @@ BrickTrace RT frame on Minecraft's VkDevice -> ...\bricktrace_game_device_frame.
 
 ---
 
+## 4.7 真实区块接入
+
+`BrickTraceWorldCapture` 在玩家进入世界时读取周围 13×13 个区块的 `LevelChunkSection`（每 section 4096 个体素），把 block state 编码成 material / 光照位，整体上传给 native：
+
+```
+BrickTrace: uploaded 1571 real sections from the client world
+BrickTrace: RT center pixel rgba=(52, 52, 50, 255)
+```
+
+- 1571 个非空 section，上传 + BLAS/TLAS 构建约 1 秒
+- 相机直接取 `Camera.position()` / `xRot()` / `yRot()` / `getFov()`，yaw 取负号匹配渲染器约定
+- 截图：`docs/images/rt-ingame.png`（真实地形、树、水、天空，原版 HUD 叠加）
+
+限制：只在进入世界时快照一次，方块变化不会更新；材质是固定调色板，没有纹理；上屏仍是 CPU 回读。
+
+---
+
 ## 5. 基准（RTX 5060 Laptop，1080p）
 
 | 场景 | 分辨率 | sections / bricks | GPU 帧时间 | FPS | 显存（BLAS+TLAS） |
